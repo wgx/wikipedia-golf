@@ -1,0 +1,570 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Wikipedia Golf</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #f1f1f1; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+
+        /* Wiki Content Styling */
+        #wiki-content { font-family: sans-serif; line-height: 1.6; color: #1f2937; }
+        #wiki-content h1, #wiki-content h2, #wiki-content h3 { font-weight: bold; margin-top: 1.5em; margin-bottom: 0.5em; color: #111; }
+        #wiki-content h1 { font-size: 2em; border-bottom: 1px solid #ccc; padding-bottom: 0.2em; }
+        #wiki-content h2 { font-size: 1.5em; border-bottom: 1px solid #eee; }
+        #wiki-content p { margin-bottom: 1em; }
+        
+        /* Playable Links */
+        #wiki-content a { color: #2563eb; text-decoration: none; cursor: pointer; padding: 2px 4px; border-radius: 2px; transition: background 0.2s; }
+        #wiki-content a:hover { text-decoration: underline; background-color: #eff6ff; }
+
+        /* Disabled Links */
+        #wiki-content a.disabled-link { color: #9ca3af; cursor: not-allowed; text-decoration: none; pointer-events: none; }
+
+        /* Hide Wiki Clutter */
+        .mw-editsection, .reference, .noprint, .thumb, .infobox, table.metadata, .hatnote { display: none; }
+        
+        /* Responsive Images */
+        #wiki-content img { max-width: 100%; height: auto; display: block; margin: 1rem auto; }
+        
+        /* Loader */
+        .loader { border: 4px solid #f3f3f3; border-top: 4px solid #3b82f6; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+        /* Path List Connector Line */
+        .path-item:not(:last-child)::after {
+            content: '';
+            position: absolute;
+            left: 1rem; 
+            top: 2rem; 
+            bottom: -0.5rem; 
+            width: 2px;
+            background-color: #e2e8f0;
+            z-index: 0;
+        }
+
+        /* Animations */
+        .animate-fade-in { animation: fadeIn 0.2s ease-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: scale(0.95); } to { opacity: 1; transform: scale(1); } }
+    </style>
+</head>
+<body class="bg-slate-100 h-screen flex flex-col overflow-hidden font-sans">
+
+    <!-- Header -->
+    <header class="bg-white border-b border-slate-200 shadow-sm shrink-0 z-10">
+        <div class="max-w-7xl mx-auto px-2 md:px-4 py-2 md:py-3">
+            <div class="flex flex-row justify-between items-center gap-2 md:gap-4">
+                <div class="flex items-center gap-2 shrink-0">
+                    <div class="hidden md:flex w-8 h-8 rounded-lg items-center justify-center text-white font-bold"><img src="wikipedia-golf.png" alt="Wikipedia Golf Logo"></div>
+                    <h1 class="text-lg md:text-xl font-bold text-slate-800 whitespace-nowrap">Wikipedia Golf</h1>
+                </div>
+
+                <div id="game-status" class="hidden flex-1 justify-center md:flex-none flex items-center gap-2 md:gap-6 bg-slate-50 px-2 py-1 md:px-4 md:py-2 rounded-full border border-slate-200 shadow-sm min-w-0 mx-2 md:mx-0">
+                    <!-- Interactive Target Button -->
+                    <button id="btn-target-hint" class="flex items-center text-xs md:text-sm group hover:bg-white px-1 py-1 rounded transition truncate max-w-[150px] md:max-w-xs" title="Click to preview target">
+                        <span class="text-slate-500 hidden sm:inline mr-1">Goal:</span>
+                        <span id="target-display" class="font-bold text-blue-700 group-hover:underline decoration-blue-300 underline-offset-4 truncate">...</span>
+                        <span class="ml-1.5 text-slate-400 text-[10px] md:text-xs bg-slate-200 w-3 h-3 md:w-4 md:h-4 rounded-full flex items-center justify-center group-hover:bg-blue-100 group-hover:text-blue-600 transition shrink-0">i</span>
+                    </button>
+                    
+                    <div class="w-px h-3 md:h-4 bg-slate-300 shrink-0"></div>
+                    
+                    <div class="text-xs md:text-sm whitespace-nowrap">
+                        <span class="text-slate-500 hidden sm:inline">Clicks:</span>
+                        <span id="score-display" class="font-bold text-red-600 ml-0.5 md:ml-1">0</span>
+                    </div>
+                </div>
+
+                <div class="shrink-0">
+                    <button id="btn-new-game" class="bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 text-xs md:text-sm font-medium py-1.5 px-3 md:py-2 md:px-4 rounded shadow-sm transition">
+                        Reset
+                    </button>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Game Area -->
+    <main class="flex-1 relative overflow-hidden flex justify-center">
+        
+        <!-- Loading Overlay -->
+        <div id="loading-overlay" class="absolute inset-0 bg-white/80 backdrop-blur-sm z-50 flex flex-col items-center justify-center hidden">
+            <div class="loader mb-4"></div>
+            <p id="loading-text" class="text-slate-600 font-medium animate-pulse">Loading...</p>
+        </div>
+
+        <!-- Scrollable Content Container -->
+        <div id="content-container" class="w-full max-w-4xl bg-white shadow-xl my-4 md:my-6 mx-4 md:mx-auto rounded-lg overflow-y-auto h-[calc(100%-3rem)] relative p-6 md:p-10">
+            
+            <!-- Start Screen (Main Menu) -->
+            <div id="intro-screen" class="flex flex-col items-center justify-center h-full text-center space-y-8">
+                <div class="space-y-2">
+                    <div class="w-32 h-32 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center mx-auto mb-4 overflow-hidden p-4">
+                        <img src="wikipedia-golf.png" alt="Wikipedia Golf Logo" class="w-full h-full object-contain">
+                    </div>
+                    <h2 class="text-4xl font-extrabold text-slate-800">Wikipedia Golf</h2>
+                    <p class="text-slate-500 max-w-md mx-auto text-lg">
+                        Navigate from A to B using only links.
+                    </p>
+                </div>
+                
+                <div class="bg-slate-50 border border-slate-200 p-6 rounded-xl text-left w-full max-w-md space-y-3 shadow-sm">
+                    <h3 class="font-bold text-slate-700 uppercase text-xs tracking-wider">How to Play</h3>
+                    <ul class="space-y-2 text-sm text-slate-600">
+                        <li class="flex gap-2"><span class="text-blue-500">1.</span> We give you a random <strong>Start Page</strong> and a <strong>Target Page</strong>.</li>
+                        <li class="flex gap-2"><span class="text-blue-500">2.</span> Click blue links to navigate.</li>
+                        <li class="flex gap-2"><span class="text-blue-500">3.</span> Find the Target in the fewest clicks possible!</li>
+                        <li class="flex gap-2"><span class="text-slate-400 font-style:italic">Tip:</span> Use the 'i' button to see what your target actually is.</li>
+                    </ul>
+                </div>
+                
+                <div class="flex flex-col gap-4 w-full max-w-xs pt-4">
+                    <button id="btn-start-random" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 px-6 rounded-xl shadow-lg shadow-blue-200 transition transform hover:-translate-y-1 active:scale-95 flex items-center justify-center gap-2">
+                        <span>Start Random Game</span>
+                        <span>🎲</span>
+                    </button>
+                    
+                    <div class="relative flex py-1 items-center">
+                        <div class="flex-grow border-t border-slate-200"></div>
+                        <span class="flex-shrink-0 mx-3 text-slate-400 text-xs uppercase font-bold tracking-widest">Custom</span>
+                        <div class="flex-grow border-t border-slate-200"></div>
+                    </div>
+
+                    <div class="flex gap-2">
+                        <input type="text" id="custom-target-input" placeholder="Target (e.g. 'Cat')" class="flex-1 px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm">
+                        <button id="btn-start-custom" class="bg-slate-800 hover:bg-slate-900 text-white font-medium py-2 px-4 rounded-lg transition text-sm">
+                            Play
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Wiki Content Render Target -->
+            <div id="wiki-content" class="hidden"></div>
+
+        </div>
+    </main>
+
+    <!-- Hint Modal -->
+    <div id="hint-modal" class="fixed inset-0 bg-slate-900/60 z-50 hidden flex items-center justify-center backdrop-blur-sm p-4 animate-fade-in">
+        <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden flex flex-col max-h-[80vh]">
+            <div class="p-4 border-b border-slate-100 bg-slate-50 flex justify-between items-center">
+                <h3 class="font-bold text-slate-700 flex items-center gap-2">
+                    <span class="text-blue-500">ℹ️</span> Target Preview
+                </h3>
+                <button id="btn-close-hint" class="text-slate-400 hover:text-slate-600 font-bold px-2 text-xl">&times;</button>
+            </div>
+            <div class="p-6 overflow-y-auto">
+                <h2 id="hint-title" class="text-2xl font-serif font-bold text-slate-900 mb-4 border-b pb-2"></h2>
+                <img id="hint-image" class="w-full h-48 object-cover rounded-lg mb-4 hidden bg-slate-100" alt="Target thumbnail">
+                <p id="hint-text" class="text-slate-600 leading-relaxed text-sm"></p>
+            </div>
+            <div class="p-4 border-t border-slate-100 bg-slate-50 text-center">
+                <button id="btn-dismiss-hint" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-6 rounded-lg shadow text-sm transition">
+                    Got it, thanks!
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Victory Modal -->
+    <div id="win-modal" class="fixed inset-0 bg-slate-900/70 z-50 hidden flex items-center justify-center backdrop-blur-sm p-4 animate-fade-in">
+        <div class="bg-white rounded-2xl shadow-2xl max-w-lg w-full max-h-[90vh] flex flex-col overflow-hidden">
+            
+            <!-- Modal Header -->
+            <div class="p-6 text-center border-b border-slate-100 bg-slate-50">
+                <div class="w-16 h-16 bg-green-100 text-green-600 rounded-full flex items-center justify-center text-3xl mx-auto mb-3 shadow-sm">
+                    🏆
+                </div>
+                <h2 class="text-2xl font-bold text-slate-800">Round Complete!</h2>
+                <p class="text-slate-500">You reached the target in <strong id="win-score" class="text-blue-600 text-xl">0</strong> clicks.</p>
+            </div>
+
+            <!-- Modal Body (Recap) -->
+            <div class="p-6 overflow-y-auto flex-1 bg-white">
+                <h3 class="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4">Your Path</h3>
+                <div id="path-timeline" class="space-y-0"></div>
+            </div>
+
+            <!-- Modal Footer -->
+            <div class="p-6 border-t border-slate-100 bg-slate-50 flex justify-center">
+                <button id="btn-play-again" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-8 rounded-xl shadow-lg transition transform active:scale-95">
+                    Play Again
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- Game State ---
+        const state = {
+            targetTitle: null,
+            startTitle: null,
+            currentTitle: null,
+            path: [], 
+            clicks: 0,
+            isPlaying: false
+        };
+
+        // --- DOM Elements ---
+        const els = {
+            introScreen: document.getElementById('intro-screen'),
+            wikiContent: document.getElementById('wiki-content'),
+            loadingOverlay: document.getElementById('loading-overlay'),
+            loadingText: document.getElementById('loading-text'),
+            gameStatus: document.getElementById('game-status'),
+            targetDisplay: document.getElementById('target-display'),
+            scoreDisplay: document.getElementById('score-display'),
+            
+            // Win Modal
+            winModal: document.getElementById('win-modal'),
+            winScore: document.getElementById('win-score'),
+            pathTimeline: document.getElementById('path-timeline'),
+            btnPlayAgain: document.getElementById('btn-play-again'),
+
+            // Hint Modal
+            btnTargetHint: document.getElementById('btn-target-hint'),
+            hintModal: document.getElementById('hint-modal'),
+            hintTitle: document.getElementById('hint-title'),
+            hintText: document.getElementById('hint-text'),
+            hintImage: document.getElementById('hint-image'),
+            btnCloseHint: document.getElementById('btn-close-hint'),
+            btnDismissHint: document.getElementById('btn-dismiss-hint'),
+
+            // Controls
+            customInput: document.getElementById('custom-target-input'),
+            btnNewGame: document.getElementById('btn-new-game')
+        };
+
+        // Fixed API Base
+        const API_BASE = "https://en.wikipedia.org/w/api.php";
+
+        // --- Event Listeners ---
+        
+        els.btnNewGame.addEventListener('click', resetGame);
+        els.btnPlayAgain.addEventListener('click', resetGame);
+
+        // Hint Modal Listeners
+        els.btnTargetHint.addEventListener('click', showHintModal);
+        els.btnCloseHint.addEventListener('click', hideHintModal);
+        els.btnDismissHint.addEventListener('click', hideHintModal);
+        els.hintModal.addEventListener('click', (e) => {
+            if(e.target === els.hintModal) hideHintModal();
+        });
+
+        document.getElementById('btn-start-random').addEventListener('click', () => startGame());
+        document.getElementById('btn-start-custom').addEventListener('click', () => {
+            const val = els.customInput.value.trim();
+            if(val) startGame(val);
+            else alert("Please enter a target topic!");
+        });
+        
+        els.customInput.addEventListener('keypress', (e) => {
+            if(e.key === 'Enter') document.getElementById('btn-start-custom').click();
+        });
+
+        // --- Core Logic ---
+
+        function resetGame() {
+            state.isPlaying = false;
+            state.path = [];
+            state.clicks = 0;
+            state.targetTitle = null;
+            state.startTitle = null;
+            state.currentTitle = null;
+
+            els.introScreen.classList.remove('hidden');
+            els.wikiContent.classList.add('hidden');
+            els.gameStatus.classList.add('hidden');
+            els.winModal.classList.add('hidden');
+            hideHintModal();
+            
+            els.wikiContent.innerHTML = '';
+            els.pathTimeline.innerHTML = '';
+            els.scoreDisplay.textContent = '0';
+            els.targetDisplay.textContent = '...';
+            els.customInput.value = '';
+        }
+
+        async function startGame(customTarget = null) {
+            resetGame();
+            els.introScreen.classList.add('hidden');
+            showLoading(true, "Initializing Game...");
+            
+            try {
+                if (customTarget) {
+                    const targetData = await fetchPageData(customTarget);
+                    if (!targetData) throw new Error("Target page not found.");
+                    state.targetTitle = targetData.title;
+                } else {
+                    state.targetTitle = await getRandomPageTitle();
+                }
+
+                let startTitle = await getRandomPageTitle();
+                let attempts = 0;
+                while (normalize(startTitle) === normalize(state.targetTitle) && attempts < 5) {
+                    startTitle = await getRandomPageTitle();
+                    attempts++;
+                }
+                state.startTitle = startTitle;
+
+                els.wikiContent.classList.remove('hidden');
+                els.gameStatus.classList.remove('hidden');
+                els.gameStatus.classList.add('flex');
+                els.targetDisplay.textContent = state.targetTitle;
+                updateScore();
+                state.isPlaying = true;
+
+                await loadPage(startTitle);
+
+            } catch (err) {
+                alert("Error: " + err.message);
+                resetGame();
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        async function loadPage(title) {
+            showLoading(true, `Navigating...`);
+            document.getElementById('content-container').scrollTop = 0;
+
+            try {
+                const data = await fetchPageData(title);
+                if(!data) throw new Error("Could not load page");
+
+                state.currentTitle = data.title;
+                state.path.push(data.title);
+
+                els.wikiContent.innerHTML = `
+                    <div class="mb-6">
+                        <h1 class="text-3xl font-serif border-b pb-2 mb-2">${data.title}</h1>
+                        ${state.path.length > 1 ? `<div class="text-xs text-slate-400 uppercase tracking-wider font-bold">Link ${state.clicks} / Path Depth ${state.path.length}</div>` : ''}
+                    </div>
+                    ${data.text['*']}
+                `;
+
+                if (normalize(state.currentTitle) === normalize(state.targetTitle)) {
+                    triggerWin();
+                    return;
+                }
+
+                processLinks();
+
+            } catch (error) {
+                console.error(error);
+                els.wikiContent.innerHTML = `<div class="text-center p-10 text-red-500">Failed to load page. <button id="btn-retry-load" class="underline font-bold">Retry</button></div>`;
+                document.getElementById('btn-retry-load').onclick = () => loadPage(title);
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        // --- Hint System ---
+
+        async function showHintModal() {
+            if (!state.targetTitle) return;
+            
+            showLoading(true, "Fetching Preview...");
+            try {
+                const data = await fetchPageSummary(state.targetTitle);
+                if(!data) throw new Error("No summary available");
+
+                els.hintTitle.textContent = data.title;
+                els.hintText.textContent = data.extract || "No preview text available for this article.";
+                
+                if (data.thumbnail && data.thumbnail.source) {
+                    els.hintImage.src = data.thumbnail.source;
+                    els.hintImage.classList.remove('hidden');
+                } else {
+                    els.hintImage.classList.add('hidden');
+                }
+
+                els.hintModal.classList.remove('hidden');
+            } catch(e) {
+                alert("Could not load hint for this page.");
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        function hideHintModal() {
+            els.hintModal.classList.add('hidden');
+        }
+
+        // --- Link Processing ---
+
+        function processLinks() {
+            const links = els.wikiContent.querySelectorAll('a');
+            links.forEach(link => {
+                const href = link.getAttribute('href');
+                
+                // 1. Handle Anchor Links (Page Jumps)
+                if (href && href.startsWith('#') && href.length > 1) {
+                    link.onclick = (e) => {
+                        e.preventDefault();
+                        const targetId = href.substring(1);
+                        const targetEl = document.getElementById(targetId);
+                        if (targetEl) {
+                            targetEl.scrollIntoView({ behavior: 'smooth' });
+                        }
+                    };
+                    return; 
+                }
+
+                // 2. Handle Game Links
+                const isInternal = href && href.startsWith('/wiki/');
+                const isSpecial = href && (href.includes(':') && !href.startsWith('/wiki/Portal:')); 
+
+                if (isInternal && !isSpecial) {
+                    const title = decodeURIComponent(href.replace('/wiki/', ''));
+                    link.onclick = (e) => {
+                        e.preventDefault();
+                        handleLinkClick(title);
+                    };
+                } else {
+                    link.classList.add('disabled-link');
+                    link.removeAttribute('href');
+                    link.title = "External or Special links disabled";
+                }
+            });
+        }
+
+        function handleLinkClick(nextTitle) {
+            if (!state.isPlaying) return;
+            state.clicks++;
+            updateScore();
+            loadPage(nextTitle);
+        }
+
+        // --- API Calls ---
+
+        async function getRandomPageTitle() {
+            const url = `${API_BASE}?origin=*&action=query&list=random&rnnamespace=0&rnlimit=1&format=json`;
+            const res = await fetch(url);
+            const data = await res.json();
+            return data.query.random[0].title;
+        }
+
+        async function fetchPageData(title) {
+            const url = `${API_BASE}?origin=*&action=parse&page=${encodeURIComponent(title)}&format=json&prop=text|displaytitle&redirects=1`;
+            const res = await fetch(url);
+            const data = await res.json();
+            return data.parse || null;
+        }
+
+        async function fetchPageSummary(title) {
+            const url = `${API_BASE}?origin=*&action=query&titles=${encodeURIComponent(title)}&format=json&prop=extracts|pageimages&exintro&explaintext&pithumbsize=400&redirects=1`;
+            const res = await fetch(url);
+            const data = await res.json();
+            
+            const pages = data.query.pages;
+            const pageId = Object.keys(pages)[0];
+            return pages[pageId];
+        }
+
+        // --- Utilities & UI ---
+
+        function updateScore() {
+            els.scoreDisplay.textContent = state.clicks;
+        }
+
+        function normalize(str) {
+            return str ? str.toLowerCase().replace(/_/g, ' ').trim() : '';
+        }
+
+        function showLoading(show, text = "") {
+            if (show) {
+                els.loadingText.textContent = text;
+                els.loadingOverlay.classList.remove('hidden');
+            } else {
+                els.loadingOverlay.classList.add('hidden');
+            }
+        }
+
+        function triggerWin() {
+            state.isPlaying = false;
+            els.winScore.textContent = state.clicks;
+            
+            const html = state.path.map((title, index) => {
+                const isStart = index === 0;
+                const isEnd = index === state.path.length - 1;
+                
+                let icon = `<div class="w-2 h-2 bg-slate-300 rounded-full"></div>`;
+                let colorClass = "text-slate-600";
+                let borderClass = "border-slate-200";
+
+                if(isStart) {
+                    icon = `<div class="text-xs">⛳</div>`;
+                    colorClass = "text-slate-900 font-bold";
+                    borderClass = "border-blue-500 bg-blue-50";
+                }
+                if(isEnd) {
+                    icon = `<div class="text-xs">🏆</div>`;
+                    colorClass = "text-green-700 font-bold";
+                    borderClass = "border-green-500 bg-green-50";
+                }
+
+                return `
+                    <div class="relative pl-8 pb-6 path-item last:pb-0">
+                        <div class="absolute left-0 top-1 w-8 h-8 rounded-full border ${borderClass} flex items-center justify-center z-10 bg-white">
+                            ${icon}
+                        </div>
+                        <div class="pt-2">
+                            <div class="${colorClass} text-sm">${title}</div>
+                            ${isStart ? `<div class="text-[10px] uppercase font-bold text-slate-400">Start</div>` : ''}
+                            ${isEnd ? `<div class="text-[10px] uppercase font-bold text-green-500">Target Reached!</div>` : ''}
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+            els.pathTimeline.innerHTML = html;
+            els.winModal.classList.remove('hidden');
+            fireConfetti();
+        }
+
+        function fireConfetti() {
+            const colors = ['#ef4444', '#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899'];
+            for(let i=0; i<100; i++) {
+                const div = document.createElement('div');
+                div.style.position = 'fixed';
+                div.style.left = Math.random() * 100 + 'vw';
+                div.style.top = -20 - (Math.random() * 20) + 'px';
+                
+                const size = Math.random() * 8 + 6 + 'px'; 
+                div.style.width = size;
+                div.style.height = size;
+                div.style.backgroundColor = colors[Math.floor(Math.random() * colors.length)];
+                
+                if(Math.random() > 0.5) div.style.borderRadius = '50%';
+                else div.style.borderRadius = '2px';
+                div.style.zIndex = 100;
+                
+                const duration = Math.random() * 2 + 2; 
+                const delay = Math.random() * 0.5; 
+                
+                div.style.transition = `top ${duration}s linear, transform ${duration}s ease-in-out, opacity ${duration}s ease-in`;
+                document.body.appendChild(div);
+                
+                requestAnimationFrame(() => {
+                    setTimeout(() => {
+                        div.style.top = '110vh'; 
+                        const rotate = Math.random() * 720 - 360;
+                        const sway = Math.random() * 200 - 100; 
+                        div.style.transform = `translate(${sway}px, 0) rotate(${rotate}deg)`;
+                        div.style.opacity = 0.8;
+                    }, delay * 1000);
+                });
+                
+                setTimeout(() => div.remove(), (duration + delay) * 1000 + 100);
+            }
+        }
+    </script>
+</body>
+</html>
