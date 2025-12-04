@@ -27,7 +27,7 @@
         #wiki-content a.disabled-link { color: #9ca3af; cursor: not-allowed; text-decoration: none; pointer-events: none; }
 
         /* Hide Wiki Clutter */
-        .mw-editsection, .reference, .noprint, .thumb, .infobox, table.metadata, .hatnote { display: none; }
+        .mw-editsection, .reference, .noprint, .thumb, .infobox, table.metadata, .hatnote, .sidebar { display: none; }
         
         /* Responsive Images */
         #wiki-content img { max-width: 100%; height: auto; display: block; margin: 1rem auto; }
@@ -125,7 +125,7 @@
                 
                 <div class="flex flex-col gap-4 w-full max-w-xs pt-4">
                     <button id="btn-start-random" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 px-6 rounded-xl shadow-lg shadow-blue-200 transition transform hover:-translate-y-1 active:scale-95 flex items-center justify-center gap-2">
-                        <span>Start Random Game</span>
+                        <span>Start Game</span>
                         <span>🎲</span>
                     </button>
                     
@@ -157,21 +157,39 @@
 
     <!-- Hint Modal -->
     <div id="hint-modal" class="fixed inset-0 bg-slate-900/60 z-50 hidden flex items-center justify-center backdrop-blur-sm p-4 animate-fade-in">
-        <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden flex flex-col max-h-[80vh]">
+        <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden flex flex-col max-h-[85vh]">
             <div class="p-4 border-b border-slate-100 bg-slate-50 flex justify-between items-center">
                 <h3 class="font-bold text-slate-700 flex items-center gap-2">
-                    <span class="text-blue-500">ℹ️</span> Target Preview
+                    <span class="text-blue-500">ℹ️</span> Target Info
                 </h3>
                 <button id="btn-close-hint" class="text-slate-400 hover:text-slate-600 font-bold px-2 text-xl">&times;</button>
             </div>
-            <div class="p-6 overflow-y-auto">
-                <h2 id="hint-title" class="text-2xl font-serif font-bold text-slate-900 mb-4 border-b pb-2"></h2>
-                <img id="hint-image" class="w-full h-48 object-cover rounded-lg mb-4 hidden bg-slate-100" alt="Target thumbnail">
-                <p id="hint-text" class="text-slate-600 leading-relaxed text-sm"></p>
+            
+            <div class="p-6 overflow-y-auto space-y-6">
+                <!-- Main Summary -->
+                <div>
+                    <h2 id="hint-title" class="text-2xl font-serif font-bold text-slate-900 mb-2"></h2>
+                    <img id="hint-image" class="w-full h-48 object-cover rounded-lg mb-4 hidden bg-slate-100" alt="Target thumbnail">
+                    <p id="hint-text" class="text-slate-600 leading-relaxed text-sm"></p>
+                </div>
+
+                <!-- Stepping Stones (Inbound Links) -->
+                <div class="bg-blue-50 rounded-xl p-4 border border-blue-100">
+                    <h4 class="font-bold text-blue-900 text-sm mb-2 flex items-center gap-2">
+                        <span>🔗</span> Stepping Stones
+                    </h4>
+                    <p class="text-xs text-blue-700 mb-3">
+                        Stuck? Try to find one of these pages. They link directly to the target.
+                    </p>
+                    <div id="hint-backlinks" class="flex flex-wrap gap-2">
+                        <span class="text-xs text-blue-400 italic">Loading connections...</span>
+                    </div>
+                </div>
             </div>
+
             <div class="p-4 border-t border-slate-100 bg-slate-50 text-center">
                 <button id="btn-dismiss-hint" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-6 rounded-lg shadow text-sm transition">
-                    Got it, thanks!
+                    Resume Game
                 </button>
             </div>
         </div>
@@ -238,6 +256,7 @@
             hintTitle: document.getElementById('hint-title'),
             hintText: document.getElementById('hint-text'),
             hintImage: document.getElementById('hint-image'),
+            hintBacklinks: document.getElementById('hint-backlinks'),
             btnCloseHint: document.getElementById('btn-close-hint'),
             btnDismissHint: document.getElementById('btn-dismiss-hint'),
 
@@ -299,7 +318,7 @@
         async function startGame(customTarget = null) {
             resetGame();
             els.introScreen.classList.add('hidden');
-            showLoading(true, "Initializing Game...");
+            showLoading(true, "Building Course...");
             
             try {
                 if (customTarget) {
@@ -307,7 +326,8 @@
                     if (!targetData) throw new Error("Target page not found.");
                     state.targetTitle = targetData.title;
                 } else {
-                    state.targetTitle = await getRandomPageTitle();
+                    // NEW: Get a "Playable" target (one with connections)
+                    state.targetTitle = await getPlayableTarget();
                 }
 
                 let startTitle = await getRandomPageTitle();
@@ -328,6 +348,7 @@
                 await loadPage(startTitle);
 
             } catch (err) {
+                console.error(err);
                 alert("Error: " + err.message);
                 resetGame();
             } finally {
@@ -370,29 +391,46 @@
             }
         }
 
-        // --- Hint System ---
+        // --- Hint System (UPGRADED) ---
 
         async function showHintModal() {
             if (!state.targetTitle) return;
             
-            showLoading(true, "Fetching Preview...");
+            els.hintModal.classList.remove('hidden'); // Show modal first so loader looks good
+            showLoading(true, "Scouting Target...");
+            
             try {
-                const data = await fetchPageSummary(state.targetTitle);
-                if(!data) throw new Error("No summary available");
+                // Parallel fetch: Summary AND Backlinks
+                const [summaryData, backlinks] = await Promise.all([
+                    fetchPageSummary(state.targetTitle),
+                    fetchBacklinks(state.targetTitle)
+                ]);
 
-                els.hintTitle.textContent = data.title;
-                els.hintText.textContent = data.extract || "No preview text available for this article.";
-                
-                if (data.thumbnail && data.thumbnail.source) {
-                    els.hintImage.src = data.thumbnail.source;
-                    els.hintImage.classList.remove('hidden');
-                } else {
-                    els.hintImage.classList.add('hidden');
+                // 1. Render Summary
+                if (summaryData) {
+                    els.hintTitle.textContent = summaryData.title;
+                    els.hintText.textContent = summaryData.extract || "No preview text available for this article.";
+                    
+                    if (summaryData.thumbnail && summaryData.thumbnail.source) {
+                        els.hintImage.src = summaryData.thumbnail.source;
+                        els.hintImage.classList.remove('hidden');
+                    } else {
+                        els.hintImage.classList.add('hidden');
+                    }
                 }
 
-                els.hintModal.classList.remove('hidden');
+                // 2. Render Backlinks (Stepping Stones)
+                if (backlinks && backlinks.length > 0) {
+                    els.hintBacklinks.innerHTML = backlinks.map(link => 
+                        `<span class="px-2 py-1 bg-white border border-blue-200 rounded text-xs text-blue-700 font-medium">${link.title}</span>`
+                    ).join('');
+                } else {
+                    els.hintBacklinks.innerHTML = `<span class="text-slate-400 text-xs">No direct shortcuts found. You're on your own!</span>`;
+                }
+
             } catch(e) {
-                alert("Could not load hint for this page.");
+                console.error(e);
+                els.hintText.textContent = "Could not load hint data.";
             } finally {
                 showLoading(false);
             }
@@ -450,10 +488,41 @@
         // --- API Calls ---
 
         async function getRandomPageTitle() {
+            // Basic random fetch
             const url = `${API_BASE}?origin=*&action=query&list=random&rnnamespace=0&rnlimit=1&format=json`;
             const res = await fetch(url);
             const data = await res.json();
             return data.query.random[0].title;
+        }
+
+        // NEW: Finds a target that isn't a "dead end"
+        async function getPlayableTarget() {
+            // Fetch 5 random pages at once, and check their incoming link counts
+            // We want a page that has many incoming links (is popular/reachable)
+            const url = `${API_BASE}?origin=*&action=query&generator=random&grnnamespace=0&grnlimit=5&prop=linkshere&lhlimit=50&format=json`;
+            
+            const res = await fetch(url);
+            const data = await res.json();
+            
+            if (!data.query || !data.query.pages) {
+                // Fallback if query fails
+                return await getRandomPageTitle(); 
+            }
+
+            const pages = Object.values(data.query.pages);
+            
+            // Sort by number of incoming links (descending)
+            pages.sort((a, b) => {
+                const linksA = a.linkshere ? a.linkshere.length : 0;
+                const linksB = b.linkshere ? b.linkshere.length : 0;
+                return linksB - linksA;
+            });
+
+            // Return the most connected page
+            // If the best page has very few links, we might want to retry, 
+            // but for speed we'll just take the best of the batch.
+            console.log("Selected Target:", pages[0].title, "Incoming Links Sample:", pages[0].linkshere?.length || 0);
+            return pages[0].title;
         }
 
         async function fetchPageData(title) {
@@ -467,10 +536,24 @@
             const url = `${API_BASE}?origin=*&action=query&titles=${encodeURIComponent(title)}&format=json&prop=extracts|pageimages&exintro&explaintext&pithumbsize=400&redirects=1`;
             const res = await fetch(url);
             const data = await res.json();
-            
             const pages = data.query.pages;
             const pageId = Object.keys(pages)[0];
             return pages[pageId];
+        }
+
+        // NEW: Fetch pages that link TO the target
+        async function fetchBacklinks(title) {
+            // "linkshere" gets pages that link to the title
+            const url = `${API_BASE}?origin=*&action=query&prop=linkshere&titles=${encodeURIComponent(title)}&lhnamespace=0&lhlimit=10&lhshow=!redirect&format=json`;
+            const res = await fetch(url);
+            const data = await res.json();
+            const pages = data.query.pages;
+            const pageId = Object.keys(pages)[0];
+            
+            if (pages[pageId] && pages[pageId].linkshere) {
+                return pages[pageId].linkshere; // Returns array of { pageid, ns, title }
+            }
+            return [];
         }
 
         // --- Utilities & UI ---
@@ -572,10 +655,9 @@
         }
     </script>
     <script src="https://wgx.github.io/herenow/herenow.min.js" defer></script>
-<!-- experimental overlay nav -->
-<script>eval(Function("[M='CWuoFQ?OGOzDmdqO@Va_TbVlAyZIutH?hQDoRZM@x}S~XqhMTIebu?gE]stGLLofy?uIgUqDXV``QIl`DU_GE^^aJ?llqZqVd[K_{npFklYTWouKvQKynsYtVgcTq^bxhl^Pjpz|vbk~@DcIDeypppAZgBd}Pb@x__fWl}EaPwbphMLhipesNnKywwteGgH{W]Lnozel^@OqAaZLpdSn_qgkg}JuNANMlhRNObZw^OK_tRE|cbP^woftY}h`nzLetPXyiUwTbihfYbIOVLYeO?sbRqRJ?UkgHcX@KwgcX_XIKCVomnJiztwzdp_ulILKqr[LhIsA?wNAULVosYO|rLfGkLjjZ[_QxYdAkLuXCVtUnmGDcgezm}OhkBVjdJUj}uRCbh{ZHsEBTnOMWxibHqeXfVDT~E_GHIby[G{{qThafMODuww^U`m?[QALk[A~TH_]OeUgFSjrGLTp~LFXmjsw|vhxNEmZnrnDFjiy[hyYHRtaacO~]xODDMHjkWWhJKS`eSGii`fLrNkJ?WLb@uomjXHRtkwlu]ULTrZXwsRh?K`@sP?Vaqs~WPq[MT?][H^aJNTKNHmHXZyU]bQbddhZQwwUA_@vrLwJRdRCSIbwhzpp]Nzyhbuok`MuGoxtxLUTcpNUA@F?V^M`LE}aubtl{WTzDSWJ`^aHX}dHQ{kkvzySVGFBec|ONdgOdIMmDlHzdw]]KXz|ILr|rM|bys@}LauqwJXmpTti~]fLRuwiVXoT{FTNtizyQBGEYy`~LkPeyHRyFLKt|snMHgjB|jPSvhKtnMuql[_RXEWGWt{bgAaUtKibQVwq{chV}alPkqd^tyL[BswelSpQBLCkhK_[GpXOOr^c@fHDNC^BYiJTKICyaD~haS^rllJ{mvyz_uf`E]|aGk]alcE^YT?ACjNlJEnZhmYCCVB?^St?X@KuRE`y|vUKGlLSRG|LMWffkyuSDLE|oH}HQGQLoQPxVFgze`mG[f~AoiEyhUyS`zxLhQoV^HHe@BKhCLsztHkwznhtKSa^NWlh^h@MCp}BElhdCyTb|R[xQvAzWc_MgefO`ldVfVNkYe_BzCbwKFqAiwGSwSGjxHUqdtxy@qgiZTpWSAz~yhvireoT[AlOYDZ@gkdHX@d_^[ltyasQExjXucCO{_CutOyQ{|k`P|eXLEFelMTf{cLomHcCqx{L|YrDwH]Kr_dhtBIrjJBEu~GiWOMOw`bj^mWk[pXPUTSoZOVW@UKgb}[ehmVktN^@pYh^LgvSByVZ[WEKhFoDKpDI]MncyaFACOML~wZN_qSvtkXxdcVTr~DroGIUv?URnFPaBWTAQhybqR}aJaYpCP^yf`w{_lQNk|`sfj|~IdpItzfI{J`'"
-,...']charCodeAtUinyxp',"for(;e<2499;c[e++]=x-128)for(x=1;x<128;n=p.map((i,y)=>(t=r[i]*2+1,t=Math.log(t/(h-t)),A-=a[y]*t,t/500)),A=~-h/(1+Math.exp(A))|1,U=o%h<A,o=o%h+(U?A:h-A)*(o>>15)-!U*A,p.map((i,y)=>(t=r[i]+=(U*h/2-r[i]<<15)/((C[i]+=C[i]<7)+.1)>>15,a[y]+=n[y]*(U-A/h))),x=x*2+U)for(p='010202103203210431053105410642065206541'.split(A=0).map((i,y)=>(t=0,[...i].map((i,y)=>(t=t*997+(c[e-i]|0)|0)),h*128-1&t*997+x)*12+y);o<h*128;o=o*64|M.charCodeAt(d++)&63);return String.fromCharCode(...c)")([],[],1<<15,[0,0,0,0,0,0,0,0,0,0,0,0],new Uint16Array(51e6).fill(1<<13),new Uint8Array(51e6),0,0,0))</script>
 
+    <script>eval(Function("[M='CWuoFQ?OGOzDmdqO@Va_TbVlAyZIutH?hQDoRZM@x}S~XqhMTIebu?gE]stGLLofy?uIgUqDXV``QIl`DU_GE^^aJ?llqZqVd[K_{npFklYTWouKvQKynsYtVgcTq^bxhl^Pjpz|vbk~@DcIDeypppAZgBd}Pb@x__fWl}EaPwbphMLhipesNnKywwteGgH{W]Lnozel^@OqAaZLpdSn_qgkg}JuNANMlhRNObZw^OK_tRE|cbP^woftY}h`nzLetPXyiUwTbihfYbIOVLYeO?sbRqRJ?UkgHcX@KwgcX_XIKCVomnJiztwzdp_ulILKqr[LhIsA?wNAULVosYO|rLfGkLjjZ[_QxYdAkLuXCVtUnmGDcgezm}OhkBVjdJUj}uRCbh{ZHsEBTnOMWxibHqeXfVDT~E_GHIby[G{{qThafMODuww^U`m?[QALk[A~TH_]OeUgFSjrGLTp~LFXmjsw|vhxNEmZnrnDFjiy[hyYHRtaacO~]xODDMHjkWWhJKS`eSGii`fLrNkJ?WLb@uomjXHRtkwlu]ULTrZXwsRh?K`@sP?Vaqs~WPq[MT?][H^aJNTKNHmHXZyU]bQbddhZQwwUA_@vrLwJRdRCSIbwhzpp]Nzyhbuok`MuGoxtxLUTcpNUA@F?V^M`LE}aubtl{WTzDSWJ`^aHX}dHQ{kkvzySVGFBec|ONdgOdIMmDlHzdw]]KXz|ILr|rM|bys@}LauqwJXmpTti~]fLRuwiVXoT{FTNtizyQBGEYy`~LkPeyHRyFLKt|snMHgjB|jPSvhKtnMuql[_RXEWGWt{bgAaUtKibQVwq{chV}alPkqd^tyL[BswelSpQBLCkhK_[GpXOOr^c@fHDNC^BYiJTKICyaD~haS^rllJ{mvyz_uf`E]|aGk]alcE^YT?ACjNlJEnZhmYCCVB?^St?X@KuRE`y|vUKGlLSRG|LMWffkyuSDLE|oH}HQGQLoQPxVFgze`mG[f~AoiEyhUyS`zxLhQoV^HHe@BKhCLsztHkwznhtKSa^NWlh^h@MCp}BElhdCyTb|R[xQvAzWc_MgefO`ldVfVNkYe_BzCbwKFqAiwGSwSGjxHUqdtxy@qgiZTpWSAz~yhvireoT[AlOYDZ@gkdHX@d_^[ltyasQExjXucCO{_CutOyQ{|k`P|eXLEFelMTf{cLomHcCqx{L|YrDwH]Kr_dhtBIrjJBEu~GiWOMOw`bj^mWk[pXPUTSoZOVW@UKgb}[ehmVktN^@pYh^LgvSByVZ[WEKhFoDKpDI]MncyaFACOML~wZN_qSvtkXxdcVTr~DroGIUv?URnFPaBWTAQhybqR}aJaYpCP^yf`w{_lQNk|`sfj|~IdpItzfI{J`'"
+    ,...']charCodeAtUinyxp',"for(;e<2499;c[e++]=x-128)for(x=1;x<128;n=p.map((i,y)=>(t=r[i]*2+1,t=Math.log(t/(h-t)),A-=a[y]*t,t/500)),A=~-h/(1+Math.exp(A))|1,U=o%h<A,o=o%h+(U?A:h-A)*(o>>15)-!U*A,p.map((i,y)=>(t=r[i]+=(U*h/2-r[i]<<15)/((C[i]+=C[i]<7)+.1)>>15,a[y]+=n[y]*(U-A/h))),x=x*2+U)for(p='010202103203210431053105410642065206541'.split(A=0).map((i,y)=>(t=0,[...i].map((i,y)=>(t=t*997+(c[e-i]|0)|0)),h*128-1&t*997+x)*12+y);o<h*128;o=o*64|M.charCodeAt(d++)&63);return String.fromCharCode(...c)")([],[],1<<15,[0,0,0,0,0,0,0,0,0,0,0,0],new Uint16Array(51e6).fill(1<<13),new Uint8Array(51e6),0,0,0))</script>
 
 </body>
 </html>
