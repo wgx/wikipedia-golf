@@ -487,42 +487,51 @@
 
         // --- API Calls ---
 
+        // Pool of Vital Articles (Level 3, ~1000 articles), fetched live from Wikipedia
+        const VITAL_PAGE = "Wikipedia:Vital articles/Level/3";
+        let vitalPoolPromise = null;
+
+        function loadVitalPool() {
+            if (!vitalPoolPromise) {
+                vitalPoolPromise = (async () => {
+                    const titles = new Set();
+                    let cont = {};
+                    do {
+                        const params = new URLSearchParams({
+                            origin: '*', action: 'query', prop: 'links', titles: VITAL_PAGE,
+                            redirects: '1', plnamespace: '0', pllimit: 'max', format: 'json'
+                        });
+                        for (const [k, v] of Object.entries(cont)) params.set(k, v);
+                        const res = await fetch(`${API_BASE}?${params}`);
+                        const data = await res.json();
+                        const pages = Object.values((data.query && data.query.pages) || {});
+                        pages.forEach(p => (p.links || []).forEach(l => titles.add(l.title)));
+                        cont = data.continue || null;
+                    } while (cont);
+                    titles.delete('Main Page');
+                    if (titles.size === 0) throw new Error("Empty vital articles list");
+                    return Array.from(titles);
+                })().catch(err => {
+                    console.warn("Could not load vital articles, falling back to random pages", err);
+                    vitalPoolPromise = null;
+                    return [];
+                });
+            }
+            return vitalPoolPromise;
+        }
+
         async function getRandomPageTitle() {
-            // Basic random fetch
+            const pool = await loadVitalPool();
+            if (pool.length) return pool[Math.floor(Math.random() * pool.length)];
             const url = `${API_BASE}?origin=*&action=query&list=random&rnnamespace=0&rnlimit=1&format=json`;
             const res = await fetch(url);
             const data = await res.json();
             return data.query.random[0].title;
         }
 
-        // NEW: Finds a target that isn't a "dead end"
+        // Targets are popular vital articles, so they are always reachable
         async function getPlayableTarget() {
-            // Fetch 5 random pages at once, and check their incoming link counts
-            // We want a page that has many incoming links (is popular/reachable)
-            const url = `${API_BASE}?origin=*&action=query&generator=random&grnnamespace=0&grnlimit=5&prop=linkshere&lhlimit=50&format=json`;
-            
-            const res = await fetch(url);
-            const data = await res.json();
-            
-            if (!data.query || !data.query.pages) {
-                // Fallback if query fails
-                return await getRandomPageTitle(); 
-            }
-
-            const pages = Object.values(data.query.pages);
-            
-            // Sort by number of incoming links (descending)
-            pages.sort((a, b) => {
-                const linksA = a.linkshere ? a.linkshere.length : 0;
-                const linksB = b.linkshere ? b.linkshere.length : 0;
-                return linksB - linksA;
-            });
-
-            // Return the most connected page
-            // If the best page has very few links, we might want to retry, 
-            // but for speed we'll just take the best of the batch.
-            console.log("Selected Target:", pages[0].title, "Incoming Links Sample:", pages[0].linkshere?.length || 0);
-            return pages[0].title;
+            return await getRandomPageTitle();
         }
 
         async function fetchPageData(title) {
