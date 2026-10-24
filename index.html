@@ -219,8 +219,8 @@
         document.getElementById('btn-start-random').addEventListener('click', () => startGame('random'));
         document.getElementById('btn-start-daily').addEventListener('click', () => startGame('daily'));
         els.btnShare.addEventListener('click', async () => {
-            const label = state.mode === 'daily' ? `Wikipedia Golf ${state.dayKey}` : '⛳ Wikipedia Golf';
-            const text = `${label}\n${state.startTitle} → ${state.targetTitle}\n${state.clicks} clicks\nhttps://studiowgx.willgrant.org/wikipedia-golf/`;
+            const label = state.mode === 'daily' ? `⛳ Wikipedia Golf ${state.dayKey}` : 'Wikipedia Golf';
+            const text = `${label}\n${state.startTitle} → ${state.targetTitle}\n${state.clicks} clicks\nhttps://studiowgx.willgrant.org/wikipedia-golf/\n#wikipediagolf`;
             try {
                 await navigator.clipboard.writeText(text);
                 els.btnShare.textContent = 'Copied';
@@ -470,7 +470,6 @@
             els.winModal.hidden = false;
         }
     </script>
-    <script src="https://146cc271-8a06-4205-b8ec-a5bc5307b7eb.s3.us-east-1.amazonaws.com/impulse-purchase.js" defer></script>
     <script src="https://wgx.github.io/herenow/herenow.min.js" defer></script>
 </body>
 </html>
