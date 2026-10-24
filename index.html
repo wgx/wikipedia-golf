@@ -157,7 +157,7 @@
     </main>
 
     <footer>
-        Made by <a href="https://willgrant.org">WGX</a> | <span class="herenow">1 user here now</span>, golfing.
+        Made by <a href="https://studiowgx.willgrant.org">WGX</a> | <span class="herenow">1 user here now</span>, golfing.
     </footer>
 
     <div id="win-modal" hidden>
@@ -219,7 +219,7 @@
         document.getElementById('btn-start-random').addEventListener('click', () => startGame('random'));
         document.getElementById('btn-start-daily').addEventListener('click', () => startGame('daily'));
         els.btnShare.addEventListener('click', async () => {
-            const label = state.mode === 'daily' ? `Wikipedia Golf ${state.dayKey}` : 'Wikipedia Golf';
+            const label = state.mode === 'daily' ? `Wikipedia Golf ${state.dayKey}` : '⛳ Wikipedia Golf';
             const text = `${label}\n${state.startTitle} → ${state.targetTitle}\n${state.clicks} clicks\nhttps://studiowgx.willgrant.org/wikipedia-golf/`;
             try {
                 await navigator.clipboard.writeText(text);
