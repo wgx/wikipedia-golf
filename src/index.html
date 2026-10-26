@@ -238,8 +238,35 @@
             startGame('daily', v);
         });
 
-        els.btnNewGame.addEventListener('click', resetGame);
-        els.btnPlayAgain.addEventListener('click', resetGame);
+        // --- Local progress (localStorage; no permission prompts) ---
+        const STORE_KEY = 'wikipedia-golf:v1';
+        function loadStore() {
+            try {
+                const s = JSON.parse(localStorage.getItem(STORE_KEY));
+                if (s && typeof s === 'object') return { done: s.done || {}, active: s.active || null };
+            } catch (e) {}
+            return { done: {}, active: null };
+        }
+        function saveStore(store) {
+            try { localStorage.setItem(STORE_KEY, JSON.stringify(store)); } catch (e) {}
+        }
+        function saveActive() {
+            const store = loadStore();
+            store.active = {
+                mode: state.mode, dayKey: state.dayKey,
+                start: state.startTitle, target: state.targetTitle,
+                path: state.path, clicks: state.clicks
+            };
+            saveStore(store);
+        }
+        function clearActive() {
+            const store = loadStore();
+            store.active = null;
+            saveStore(store);
+        }
+
+        els.btnNewGame.addEventListener('click', () => { clearActive(); resetGame(); });
+        els.btnPlayAgain.addEventListener('click', () => { clearActive(); resetGame(); });
         document.getElementById('btn-start-random').addEventListener('click', () => startGame('random'));
         document.getElementById('btn-start-daily').addEventListener('click', () => startGame('daily'));
         els.btnShare.addEventListener('click', async () => {
@@ -313,15 +340,28 @@
             return { start, target };
         }
 
-        async function startGame(mode = 'random', day = null) {
+        async function startGame(mode = 'random', day = null, resume = null) {
             resetGame();
             state.mode = mode;
             state.dayKey = day || todayKey();
+
+            if (mode === 'daily' && !resume) {
+                const done = loadStore().done[state.dayKey];
+                if (done) {
+                    state.startTitle = done.start;
+                    state.targetTitle = done.target;
+                    state.path = done.path;
+                    state.clicks = done.clicks;
+                    els.introScreen.hidden = true;
+                    showWin();
+                    return;
+                }
+            }
             els.introScreen.hidden = true;
             showLoading(true, mode === 'daily' ? "Loading today's course..." : "Building course...");
 
             try {
-                const { start, target } = await pickPages(mode);
+                const { start, target } = resume || await pickPages(mode);
                 state.targetTitle = target;
                 state.startTitle = start;
 
@@ -331,7 +371,14 @@
                 updateScore();
                 state.isPlaying = true;
 
-                await loadPage(start);
+                if (resume) {
+                    state.clicks = resume.clicks;
+                    state.path = resume.path.slice(0, -1);
+                    updateScore();
+                    await loadPage(resume.path[resume.path.length - 1]);
+                } else {
+                    await loadPage(start);
+                }
             } catch (err) {
                 console.error(err);
                 alert("Error: " + err.message);
@@ -364,6 +411,7 @@
                     triggerWin();
                     return;
                 }
+                saveActive();
 
                 processLinks();
             } catch (error) {
@@ -483,6 +531,19 @@
         }
 
         function triggerWin() {
+            const store = loadStore();
+            store.active = null;
+            if (state.mode === 'daily') {
+                store.done[state.dayKey] = {
+                    start: state.startTitle, target: state.targetTitle,
+                    path: state.path, clicks: state.clicks
+                };
+            }
+            saveStore(store);
+            showWin();
+        }
+
+        function showWin() {
             state.isPlaying = false;
             els.winScore.textContent = state.clicks;
 
@@ -493,6 +554,14 @@
 
             els.winModal.hidden = false;
         }
+
+        // Resume an unfinished run
+        (function () {
+            const a = loadStore().active;
+            if (a && a.start && a.target && Array.isArray(a.path) && a.path.length) {
+                startGame(a.mode, a.dayKey, a);
+            }
+        })();
     </script>
     <script src="https://wgx.github.io/herenow/herenow.min.js" defer></script>
 </body>
