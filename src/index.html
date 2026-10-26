@@ -60,7 +60,11 @@
         #intro-screen h2 { font-size: 40px; margin: 0; line-height: 1; display: flex; align-items: center; gap: 12px; }
         #intro-screen h2 img { width: 44px; height: 44px; }
         .tagline { color: var(--muted); font-style: italic; margin: 8px 0 20px; font-size: 18px; }
-        .rules { border-top: 2px solid var(--rule); border-bottom: 1px solid var(--rule); padding: 12px 0; margin-bottom: 24px; }
+        .separator { border: 0; border-top: 2px solid var(--rule); margin: 24px 0 16px; }
+        .rules { padding: 0 0 8px; }
+        .daily-course { border: 1px solid var(--faint); padding: 8px 10px; font-size: 15px; line-height: 1.5; }
+        .daily-course .label { display: inline-block; width: 64px; font-family: var(--mono); font-size: 10px; text-transform: uppercase; letter-spacing: .1em; color: var(--muted); }
+        .daily-timer { font-family: var(--mono); font-size: 12px; color: var(--muted); margin-top: 4px; }
         .rules h3 { margin: 0 0 6px; font-family: var(--mono); font-size: 12px; text-transform: uppercase; letter-spacing: .12em; }
         .rules ol { margin: 0; padding-left: 20px; line-height: 1.6; }
         .modes { display: flex; flex-direction: column; gap: 10px; }
@@ -142,17 +146,13 @@
                 <h2><img src="wikipedia-golf.png" alt="">Wikipedia Golf</h2>
                 <p class="tagline">Get from page A to page B in the fewest clicks.</p>
 
-                <div class="rules">
-                    <h3>How to play</h3>
-                    <ol>
-                        <li>You get a start page and a target page.</li>
-                        <li>Click links in the article to move.</li>
-                        <li>Reach the target in as few clicks as you can.</li>
-                    </ol>
-                </div>
-
                 <div class="modes">
                     <div class="daily-note">Everyone gets the same two pages each day.</div>
+                    <div class="daily-course" id="daily-course">
+                        <div><span class="label">Start</span><span id="daily-start">…</span></div>
+                        <div><span class="label">Target</span><span id="daily-target">…</span></div>
+                        <div class="daily-timer">Next challenge in <span id="daily-countdown">--h --m</span></div>
+                    </div>
                     <button id="btn-start-daily" class="btn btn-primary"><span>Daily Challenge</span><small id="daily-label"></small></button>
                     <button id="btn-start-random" class="btn btn-secondary"><span>Random Game</span><small>new pages every time</small></button>
                     <div class="past-days">
@@ -162,6 +162,17 @@
                             <button id="btn-start-past" class="btn">Play</button>
                         </div>
                     </div>
+                </div>
+
+                <hr class="separator">
+                <div class="rules">
+                    <h3>How to play</h3>
+                    <ol>
+                        <li>You get a start page and a target page.</li>
+                        <li>Click links in the article to move.</li>
+                        <li>Reach the target in as few clicks as you can.</li>
+                        <li>Fewer clicks is a better score, like golf.</li>
+                    </ol>
                 </div>
             </div>
 
@@ -221,9 +232,11 @@
 
         const API_BASE = "https://en.wikipedia.org/w/api.php";
 
-        // Daily key uses the UTC date so everyone worldwide shares the same puzzle
+        // Daily key uses the user's local date so the challenge rolls over at local midnight
         function todayKey() {
-            return new Date().toISOString().slice(0, 10);
+            const d = new Date();
+            const pad = n => String(n).padStart(2, '0');
+            return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
         }
         els.dailyLabel.textContent = todayKey();
         const pastDate = document.getElementById('past-date');
@@ -321,12 +334,12 @@
             };
         }
 
-        async function pickPages(mode) {
+        async function pickPages(mode, day = state.dayKey) {
             const pool = await loadVitalPool();
             if (mode === 'daily') {
                 if (pool.length < 2) throw new Error("Could not load the daily challenge. Try again later.");
                 const sorted = pool.slice().sort();
-                const rand = mulberry32(hashString('wikipedia-golf:' + state.dayKey));
+                const rand = mulberry32(hashString('wikipedia-golf:' + day));
                 const target = sorted[Math.floor(rand() * sorted.length)];
                 let start = target;
                 while (start === target) start = sorted[Math.floor(rand() * sorted.length)];
@@ -554,6 +567,40 @@
 
             els.winModal.hidden = false;
         }
+
+        // --- Homepage: today's course and countdown ---
+        const dailyStart = document.getElementById('daily-start');
+        const dailyTarget = document.getElementById('daily-target');
+        const dailyCountdown = document.getElementById('daily-countdown');
+        let shownDay = null;
+
+        async function showDailyCourse() {
+            const day = todayKey();
+            shownDay = day;
+            dailyStart.textContent = dailyTarget.textContent = '…';
+            try {
+                const { start, target } = await pickPages('daily', day);
+                if (shownDay !== day) return;
+                dailyStart.textContent = start;
+                dailyTarget.textContent = target;
+            } catch (e) {
+                dailyStart.textContent = dailyTarget.textContent = 'Unavailable';
+            }
+        }
+
+        function tickCountdown() {
+            const now = new Date();
+            const midnight = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+            const mins = Math.ceil((midnight - now) / 60000);
+            dailyCountdown.textContent = `${Math.floor(mins / 60)}h ${mins % 60}m`;
+            if (todayKey() !== shownDay) {
+                els.dailyLabel.textContent = pastDate.max = todayKey();
+                showDailyCourse();
+            }
+        }
+        showDailyCourse();
+        tickCountdown();
+        setInterval(tickCountdown, 15000);
 
         // Resume an unfinished run
         (function () {
