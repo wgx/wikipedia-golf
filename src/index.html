@@ -120,6 +120,14 @@
         #wiki-content a.disabled-link { color: var(--disabled); text-decoration: none; cursor: not-allowed; pointer-events: none; }
         #wiki-content img { max-width: 100%; height: auto; display: block; margin: 1rem auto; }
         .mw-editsection, .reference, .noprint, .thumb, .infobox, table.metadata, .hatnote, .sidebar { display: none; }
+        @media (prefers-color-scheme: dark) {
+            #wiki-content :is(.navbox, .navbox-inner, .navbox-group, .navbox-list, .navbox-title, .navbox-abovebelow, .navbox-subgroup, .side-box, .sistersitebox, .infobox, .sidebar, .mbox-small, .ambox, .vertical-navbox, .navbox table, .navbox th, .navbox td, .side-box th, .side-box td),
+            #wiki-content :is(.navbox, .side-box, .sistersitebox, .sidebar, .ambox) :is(div, span, th, td, tr, li, ul) {
+                background: var(--faint) !important; color: var(--ink) !important; border-color: var(--muted) !important;
+            }
+            #wiki-content :is(.navbox, .side-box, .sistersitebox, .sidebar, .ambox) a { color: var(--link) !important; }
+            #wiki-content :is(.navbox, .side-box, .sistersitebox, .sidebar, .ambox) img { background: #fff; padding: 2px; }
+        }
         #wiki-content .load-error { text-align: center; padding: 40px; color: var(--error); }
 
         footer { border-top: 1px solid var(--faint); padding: 6px 12px calc(6px + env(safe-area-inset-bottom)); text-align: center; font-size: 12px; color: var(--muted); flex-shrink: 0; }
